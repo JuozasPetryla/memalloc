@@ -11,26 +11,26 @@ void *cacalloc(size_t num, size_t nsize);
 void *rerealloc(void *block, size_t size);
 
 int main() {
+
 	int *arr = memalloc(10 * sizeof(int));
 	for (int i = 0; i < 10; i++) {
 		arr[i] = 1;
 		printf("%d", arr[i]);
 	}
-	// printf("\n");
-	// arr = rerealloc(arr, 30 * sizeof(int));
-	// for (int i = 0; i < 30; i++) {
-	// 	printf("%d", arr[i]);
-	// }
+	printf("\n");
+	arr = rerealloc(arr, 30 * sizeof(int));
+	for (int i = 0; i < 30; i++) {
+		printf("%d", arr[i]);
+	}
 	printf("\n");
 	ffree(arr);
 
-	// arr = cacalloc(20, sizeof(int));
-	// for (int i = 0; i < 20; i++) {
-	// 	printf("%d", arr[i]);
-	// }
-	// printf("\n");
-	// ffree(arr);
-	
+	arr = cacalloc(20, sizeof(int));
+	for (int i = 0; i < 20; i++) {
+		printf("%d", arr[i]);
+	}
+	printf("\n");
+	ffree(arr);
 
 	return 0;	
 }
@@ -66,13 +66,13 @@ void *memalloc(size_t size)
 	header = get_free_block(size);
 	if (header) {
 		header->s.is_free = 0;
-		pthread_mutex_lock(&global_malloc_lock);
+		pthread_mutex_unlock(&global_malloc_lock);
 		return (void*)(header + 1);
 	}
 	total_size = sizeof(header_t) + size;
 	block = sbrk(total_size);
 	if (block == (void*)-1) {
-		pthread_mutex_lock(&global_malloc_lock);
+		pthread_mutex_unlock(&global_malloc_lock);
 		return NULL;
 	}
 	header = block;
@@ -84,7 +84,7 @@ void *memalloc(size_t size)
 	if (tail)
 		tail->s.next = (union header_t*)header;
 	tail = header;
-	pthread_mutex_lock(&global_malloc_lock);
+	pthread_mutex_unlock(&global_malloc_lock);
 	return (void*)(header + 1);
 }
 
@@ -117,7 +117,7 @@ void ffree(void *block)
 		} else {
 			tmp = head;
 			while (tmp) {
-				if (tmp->s.next == tail) {
+				if (tmp->s.next == (union header_t*)tail) {
 					tmp->s.next = NULL;
 					tail = tmp;
 				}
@@ -125,11 +125,11 @@ void ffree(void *block)
 			}
 		}
 		sbrk(0 - sizeof(header_t) - header->s.size);
-		pthread_mutex_lock(&global_malloc_lock);
+		pthread_mutex_unlock(&global_malloc_lock);
 		return;
 	}
 	header->s.is_free = 1;
-	pthread_mutex_lock(&global_malloc_lock);
+	pthread_mutex_unlock(&global_malloc_lock);
 }
 
 void *cacalloc(size_t num, size_t nsize)
@@ -157,6 +157,7 @@ void *rerealloc(void *block, size_t size)
 	header = (header_t*)block - 1;
 	if (header->s.size >= size)
 		return block;
+	ret = memalloc(size);
 	if (ret) {
 		memcpy(ret, block, header->s.size);
 		ffree(block);
